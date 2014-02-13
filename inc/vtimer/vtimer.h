@@ -62,7 +62,7 @@ typedef void (* esVTimerFn)(void *);
 struct esVTimer {
     struct esVTimer *   next;                                                   /**< @brief Next timer in linked list.                      */
     struct esVTimer *   prev;                                                   /**< @brief Previous timer in linked list.                  */
-    esSysTimerTick          rtick;                                                  /**< @brief Relative number of ticks.                       */
+    esSysTimerTick      rtick;                                                  /**< @brief Relative number of ticks.                       */
     esVTimerFn          fn;                                                     /**< @brief Timer callback function.                        */
     void *              arg;                                                    /**< @brief Argument for timer callback function.           */
 #if (CONFIG_API_VALIDATION == 1)
@@ -77,32 +77,10 @@ typedef struct esVTimer esVTimer;
 /*======================================================  GLOBAL VARIABLES  ==*/
 /*===================================================  FUNCTION PROTOTYPES  ==*/
 
-/**@brief       Initialize a timer
- * @param       vTimer
- *              Pointer to timer structure
- * @param       tick
- *              Number of ticks to run
- * @param       fn
- *              Pointer to callback function
- * @param       arg
- *              Argument for callback function
- * @api
- */
 void esVTimerInit(
-    struct esVTimer *   vTimer,
-    esSysTimerTick          tick,
-    esVTimerFn          fn,
-    void *              arg);
-
-/**@brief       Terminate a running timer
- * @param       vTimer
- *              Pointer to timer structure
- * @api
- */
-void esVTimerTerm(
     struct esVTimer *   vTimer);
 
-/**@brief       Initialize a timer
+/**@brief       Start a timer
  * @param       vTimer
  *              Pointer to timer structure
  * @param       tick
@@ -113,18 +91,43 @@ void esVTimerTerm(
  *              Argument for callback function
  * @iclass
  */
-void esVTimerInitI(
+void esVTimerStartI(
     struct esVTimer *   vTimer,
-    esSysTimerTick          tick,
+    esSysTimerTick      tick,
     esVTimerFn          fn,
     void *              arg);
 
-/**@brief       Terminate a running timer
+/**@brief       Start a timer
+ * @param       vTimer
+ *              Pointer to timer structure
+ * @param       tick
+ *              Number of ticks to run
+ * @param       fn
+ *              Pointer to callback function
+ * @param       arg
+ *              Argument for callback function
+ * @api
+ */
+void esVTimerStart(
+    struct esVTimer *   vTimer,
+    esSysTimerTick      tick,
+    esVTimerFn          fn,
+    void *              arg);
+
+/**@brief       Terminate a timer
  * @param       vTimer
  *              Pointer to timer structure
  * @iclass
  */
 void esVTimerTermI(
+    struct esVTimer *   vTimer);
+
+/**@brief       Terminate a timer
+ * @param       vTimer
+ *              Pointer to timer structure
+ * @api
+ */
+void esVTimerTerm(
     struct esVTimer *   vTimer);
 
 /**@brief       Is a timer still running?
@@ -136,14 +139,6 @@ void esVTimerTermI(
  * @iclasss
  */
 bool esVTimerIsRunningI(
-    struct esVTimer *   vTimer);
-
-/**@brief       Safe cancel a running timer
- * @param       vTimer
- *              Pointer to timer structure
- * @api
- */
-void esVTimerCancel(
     struct esVTimer *   vTimer);
 
 /**@brief       Evaluate all running timers

@@ -47,20 +47,14 @@ static struct VTimerBase GlobalVTimerSentinel = {
 /*====================================  GLOBAL PUBLIC FUNCTION DEFINITIONS  ==*/
 
 void esVTimerInit(
-    struct esVTimer *   vTimer,
-    esSysTimerTick          tick,
-    esVTimerFn          fn,
-    void *              arg) {
+    struct esVTimer *   vTimer) {
 
-    esLockCtx           lockCtx;
+    ES_API_REQUIRE(ES_API_POINTER, vTimer != NULL);
+    ES_API_REQUIRE(ES_API_OBJECT,  vTimer->signature != VTIMER_SIGNATURE);
 
-    ES_CRITICAL_LOCK_ENTER(&lockCtx);
-    esVTimerInitI(
-        vTimer,
-        tick,
-        fn,
-        arg);
-    ES_CRITICAL_LOCK_EXIT(lockCtx);
+    vTimer->next = vTimer;
+
+    ES_API_OBLIGATION(vTimer->signature = VTIMER_SIGNATURE);
 }
 
 void esVTimerTerm(
@@ -74,25 +68,59 @@ void esVTimerTerm(
     ES_CRITICAL_LOCK_EXIT(lockCtx);
 }
 
-void esVTimerInitI(
+void esVTimerTermI(
+    struct esVTimer *   vTimer) {
+
+    ES_API_REQUIRE(ES_API_POINTER, vTimer != NULL);
+    ES_API_REQUIRE(ES_API_OBJECT,  vTimer->signature == VTIMER_SIGNATURE);
+
+    if (vTimer->next != vTimer) {
+
+        if ((struct esVTimer *)&GlobalVTimerSentinel != vTimer->next) {
+            vTimer->next->rtick += vTimer->rtick;
+        }
+        vTimer->prev->next = vTimer->next;
+        vTimer->next->prev = vTimer->prev;
+    }
+    ES_API_OBLIGATION(vTimer->signature = ~VTIMER_SIGNATURE);
+}
+
+void esVTimerStart(
     struct esVTimer *   vTimer,
-    esSysTimerTick          tick,
+    esSysTimerTick      tick,
+    esVTimerFn          fn,
+    void *              arg) {
+
+    esLockCtx           lockCtx;
+
+    ES_CRITICAL_LOCK_ENTER(&lockCtx);
+    esVTimerStartI(
+        vTimer,
+        tick,
+        fn,
+        arg);
+    ES_CRITICAL_LOCK_EXIT(lockCtx);
+}
+
+void esVTimerStartI(
+    struct esVTimer *   vTimer,
+    esSysTimerTick      tick,
     esVTimerFn          fn,
     void *              arg) {
 
     struct esVTimer *   current;
 
-    ES_API_REQUIRE(ES_API_POINTER, NULL != vTimer);
-    ES_API_REQUIRE(ES_API_RANGE, 1U < tick);
-    ES_API_REQUIRE(ES_API_POINTER, fn);
-    ES_API_REQUIRE(ES_API_USAGE, VTIMER_SIGNATURE != vTimer->signature);
+    ES_API_REQUIRE(ES_API_POINTER, vTimer != NULL);
+    ES_API_REQUIRE(ES_API_USAGE,   vTimer->signature == VTIMER_SIGNATURE);
+    ES_API_REQUIRE(ES_API_RANGE,   tick > 1u);
+    ES_API_REQUIRE(ES_API_POINTER, fn != NULL);
 
-    vTimer->fn = fn;
+    vTimer->fn  = fn;
     vTimer->arg = arg;
     current = GlobalVTimerSentinel.next;
 
     while (current->rtick < tick) {
-        tick -= current->rtick;
+        tick   -= current->rtick;
         current = current->next;
     }
     vTimer->next = current;
@@ -104,57 +132,21 @@ void esVTimerInitI(
     if ((struct esVTimer *)&GlobalVTimerSentinel != current) {
         current->rtick -= tick;
     }
-    ES_API_OBLIGATION(vTimer->signature = VTIMER_SIGNATURE);
 }
 
-void esVTimerTermI(
+bool esVTimerIsRunningI(
     struct esVTimer *   vTimer) {
 
-    ES_API_REQUIRE(ES_API_POINTER, NULL != vTimer);
-    ES_API_REQUIRE(ES_API_OBJECT, VTIMER_SIGNATURE == vTimer->signature);
+    ES_API_REQUIRE(ES_API_POINTER, vTimer != NULL);
+    ES_API_REQUIRE(ES_API_USAGE,   vTimer->signature == VTIMER_SIGNATURE);
 
-    if ((struct esVTimer *)&GlobalVTimerSentinel != vTimer->next) {
-        vTimer->next->rtick += vTimer->rtick;
+    if (vTimer->next != vTimer) {
+
+        return (true);
+    } else {
+
+        return (false);
     }
-    vTimer->prev->next = vTimer->next;
-    vTimer->next->prev = vTimer->prev;
-    ES_API_OBLIGATION(vTimer->signature = ~VTIMER_SIGNATURE);
-}
-
-bool esVTimerIsStillRunningI(
-    struct esVTimer *   vTimer) {
-
-    bool                ans;
-    struct esVTimer *   current;
-
-    ans = false;
-    current = GlobalVTimerSentinel.next;
-
-    while ((struct esVTimer *)&GlobalVTimerSentinel != current) {
-
-        if (vTimer == current) {
-            ans = true;
-
-            break;
-        }
-        current = current->next;
-    }
-
-    return (ans);
-}
-
-void esVTimerCancel(
-    struct esVTimer *   vTimer) {
-
-    esLockCtx           lockCtx;
-
-    ES_CRITICAL_LOCK_ENTER(&lockCtx);
-
-    if (esVTimerIsStillRunningI(vTimer) != false) {
-        esVTimerTermI(
-            vTimer);
-    }
-    ES_CRITICAL_LOCK_EXIT(lockCtx);
 }
 
 void esVTimerEvaluateI(
@@ -173,6 +165,7 @@ void esVTimerEvaluateI(
             ES_API_REQUIRE(ES_API_USAGE, VTIMER_SIGNATURE == current->signature);
             current->prev->next = current->next;
             current->next->prev = current->prev;
+            current->next = current;
             ES_API_OBLIGATION(current->signature = ~VTIMER_SIGNATURE);
             tmp = current;
             current = GlobalVTimerSentinel.next;
