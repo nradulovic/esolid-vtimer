@@ -46,6 +46,14 @@
  */
 #define VTMR_TIME_TO_TICK_MS(time)      (((time) * 1000U) / SYSTICK_PERIOD_US)
 
+#if (CONFIG_API_VALIDATION == 1)
+#define ES_VTIMER_INITIALIZER()                                                 \
+    {NULL, NULL, 0, NULL, NULL, 0}
+#else
+#define ES_VTIMER_INITIALIZER()                                                 \
+    {NULL, NULL, 0, NULL, NULL}
+#endif
+
 /*------------------------------------------------------  C++ extern begin  --*/
 #ifdef __cplusplus
 extern "C" {
