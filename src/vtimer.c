@@ -44,6 +44,15 @@ struct VTimerBase {
 };
 
 /*=============================================  LOCAL FUNCTION PROTOTYPES  ==*/
+
+/**@brief       Evaluate all running timers
+ * @details     This function must be called from a system timer interrupt
+ *              routine.
+ * @iclass
+ */
+static void VTimerEvaluateI(
+    void);
+
 /*=======================================================  LOCAL VARIABLES  ==*/
 
 static const ES_MODULE_INFO_CREATE("VTimer", "Virtual Timer", "Nenad Radulovic");
@@ -56,8 +65,43 @@ static struct VTimerBase GlobalVTimerSentinel = {
 
 /*======================================================  GLOBAL VARIABLES  ==*/
 /*============================================  LOCAL FUNCTION DEFINITIONS  ==*/
+
+static void VTimerEvaluateI(
+    void) {
+
+    if ((struct esVTimer *)&GlobalVTimerSentinel != GlobalVTimerSentinel.next) {
+        struct esVTimer * current;
+
+        current = GlobalVTimerSentinel.next;
+        ES_API_REQUIRE(ES_API_USAGE, VTIMER_SIGNATURE == current->signature);
+        --current->rtick;
+
+        while (0U == current->rtick) {
+            struct esVTimer * tmp;
+
+            ES_API_REQUIRE(ES_API_USAGE, VTIMER_SIGNATURE == current->signature);
+            current->prev->next = current->next;
+            current->next->prev = current->prev;
+            current->next = current;
+            ES_API_OBLIGATION(current->signature = ~VTIMER_SIGNATURE);
+            tmp = current;
+            current = GlobalVTimerSentinel.next;
+            (* tmp->fn)(tmp->arg);
+        }
+    }
+}
+
 /*===================================  GLOBAL PRIVATE FUNCTION DEFINITIONS  ==*/
 /*====================================  GLOBAL PUBLIC FUNCTION DEFINITIONS  ==*/
+
+void esModuleVTimerInit(
+    void) {
+
+    ES_SYSTIMER_INIT(ES_SYSTIMER_ONE_TICK);
+    ES_SYSTIMER_ENABLE();
+    ES_SYSTIMER_ISR_ENABLE();
+    ES_SYSTIMER_SET_HANDLER(VTimerEvaluateI, 0);
+}
 
 void esVTimerInit(
     struct esVTimer *   vTimer) {
@@ -162,30 +206,6 @@ bool esVTimerIsRunningI(
     }
 }
 
-void esVTimerEvaluateI(
-    void) {
-
-    if ((struct esVTimer *)&GlobalVTimerSentinel != GlobalVTimerSentinel.next) {
-        struct esVTimer * current;
-
-        current = GlobalVTimerSentinel.next;
-        ES_API_REQUIRE(ES_API_USAGE, VTIMER_SIGNATURE == current->signature);
-        --current->rtick;
-
-        while (0U == current->rtick) {
-            struct esVTimer * tmp;
-
-            ES_API_REQUIRE(ES_API_USAGE, VTIMER_SIGNATURE == current->signature);
-            current->prev->next = current->next;
-            current->next->prev = current->prev;
-            current->next = current;
-            ES_API_OBLIGATION(current->signature = ~VTIMER_SIGNATURE);
-            tmp = current;
-            current = GlobalVTimerSentinel.next;
-            (* tmp->fn)(tmp->arg);
-        }
-    }
-}
 
 /*================================*//** @cond *//*==  CONFIGURATION ERRORS  ==*/
 /** @endcond *//** @} *//******************************************************

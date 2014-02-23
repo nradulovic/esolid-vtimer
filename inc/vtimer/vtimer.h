@@ -44,7 +44,8 @@
 
 /**@brief       Convert time (given in milliseconds) into ticks
  */
-#define VTMR_TIME_TO_TICK_MS(time)      (((time) * 1000U) / SYSTICK_PERIOD_US)
+#define ES_VTMR_TIME_TO_TICK_MS(time)                                           \
+    ((time) * (CONFIG_SYSTIMER_EVENT_FREQ / 1000u))
 
 #if (CONFIG_API_VALIDATION == 1)
 #define ES_VTIMER_INITIALIZER()                                                 \
@@ -84,6 +85,9 @@ typedef struct esVTimer esVTimer;
 
 /*======================================================  GLOBAL VARIABLES  ==*/
 /*===================================================  FUNCTION PROTOTYPES  ==*/
+
+void esModuleVTimerInit(
+    void);
 
 void esVTimerInit(
     struct esVTimer *   vTimer);
@@ -149,13 +153,6 @@ void esVTimerTerm(
 bool esVTimerIsRunningI(
     struct esVTimer *   vTimer);
 
-/**@brief       Evaluate all running timers
- * @details     This function must be called from a system timer interrupt
- *              routine.
- * @iclass
- */
-void esVTimerEvaluateI(
-    void);
 
 /*--------------------------------------------------------  C++ extern end  --*/
 #ifdef __cplusplus
