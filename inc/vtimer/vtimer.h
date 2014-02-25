@@ -131,7 +131,7 @@ void esVTimerStart(
  *              Pointer to timer structure
  * @iclass
  */
-void esVTimerTermI(
+void esVTimerCancelI(
     struct esVTimer *   vTimer);
 
 /**@brief       Terminate a timer
@@ -139,7 +139,7 @@ void esVTimerTermI(
  *              Pointer to timer structure
  * @api
  */
-void esVTimerTerm(
+void esVTimerCancel(
     struct esVTimer *   vTimer);
 
 /**@brief       Is a timer still running?
