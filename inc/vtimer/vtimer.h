@@ -45,7 +45,7 @@
 /**@brief       Convert time (given in milliseconds) into ticks
  */
 #define ES_VTMR_TIME_TO_TICK_MS(time)                                           \
-    ((time) * (CONFIG_SYSTIMER_EVENT_FREQ / 1000u))
+    ((time) * CONFIG_SYSTIMER_EVENT_FREQ / 1000u)
 
 #if (CONFIG_API_VALIDATION == 1)
 #define ES_VTIMER_INITIALIZER()                                                 \
