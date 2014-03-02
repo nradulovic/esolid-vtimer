@@ -82,7 +82,7 @@ static void VTimerEvaluateI(
             ES_REQUIRE(ES_API_USAGE, VTIMER_SIGNATURE == current->signature);
             current->prev->next = current->next;
             current->next->prev = current->prev;
-            current->next = current;
+            current->next       = current;
             ES_OBLIGATION(current->signature = ~VTIMER_SIGNATURE);
             tmp = current;
             current = GlobalVTimerSentinel.next;
