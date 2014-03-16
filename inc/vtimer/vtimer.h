@@ -22,6 +22,7 @@
  * @file
  * @author  	Nenad Radulovic
  * @brief       Virtual timer header
+ * @details     Based on virtual timers found in ChibiOS/RT
  * @defgroup    base_vtimer Virtual timer
  * @brief       Virtual timer
  *********************************************************************//** @{ */
