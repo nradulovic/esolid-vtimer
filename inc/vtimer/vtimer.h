@@ -152,8 +152,10 @@ void esVTimerCancel(
  * @iclasss
  */
 bool esVTimerIsRunningI(
-    struct esVTimer *   vTimer);
+    const struct esVTimer * vTimer);
 
+esSysTimerTick esVTimerGetRemaining(
+    const struct esVTimer * vTimer);
 
 /*--------------------------------------------------------  C++ extern end  --*/
 #ifdef __cplusplus

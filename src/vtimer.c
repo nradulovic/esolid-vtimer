@@ -191,18 +191,38 @@ void esVTimerStartI(
 }
 
 bool esVTimerIsRunningI(
-    struct esVTimer *   vTimer) {
+    const struct esVTimer * vTimer) {
 
     ES_REQUIRE(ES_API_POINTER, vTimer != NULL);
 
     if (vTimer->next != vTimer) {
-        ES_REQUIRE(ES_API_USAGE,   vTimer->signature == VTIMER_SIGNATURE);
+        ES_REQUIRE(ES_API_USAGE, vTimer->signature == VTIMER_SIGNATURE);
 
         return (true);
     } else {
 
         return (false);
     }
+}
+
+esSysTimerTick esVTimerGetRemaining(
+    const struct esVTimer * vTimer) {
+    esLockCtx           lockCtx;
+    esSysTimerTick      remaining;
+
+    ES_CRITICAL_LOCK_ENTER(&lockCtx);
+    remaining = 0u;
+
+    if (esVTimerIsRunningI(vTimer) == true) {
+
+        do {
+            remaining += vTimer->rtick;
+            vTimer     = vTimer->prev;
+        } while (vTimer != (struct esVTimer *)&GlobalVTimerSentinel);
+    }
+    ES_CRITICAL_LOCK_EXIT(lockCtx);
+
+    return (remaining);
 }
 
 
