@@ -136,6 +136,7 @@ void esVTimerCancelI(
         }
         vTimer->prev->next = vTimer->next;
         vTimer->next->prev = vTimer->prev;
+        vTimer->next = vTimer;
     }
     ES_OBLIGATION(vTimer->signature = ~VTIMER_SIGNATURE);
 }
