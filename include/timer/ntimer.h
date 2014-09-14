@@ -30,31 +30,24 @@
  * @brief       Virtual timer API
  * @{ *//*--------------------------------------------------------------------*/
 
-#ifndef ES_VTIMER_H_
-#define ES_VTIMER_H_
+#ifndef NTIMER_H
+#define NTIMER_H
 
 /*=========================================================  INCLUDE FILES  ==*/
 
 #include <stdbool.h>
 
 #include "plat/compiler.h"
-#include "arch/systimer.h"
-#include "base/debug.h"
+#include "arch/ncore.h"
+#include "base/ndebug.h"
+#include "base/nlist.h"
 
 /*===============================================================  MACRO's  ==*/
 
 /**@brief       Convert time (given in milliseconds) into ticks
  */
-#define ES_VTMR_TIME_TO_TICK_MS(time)                                           \
-    ((time) * CONFIG_SYSTIMER_EVENT_FREQ / 1000u)
-
-#if (CONFIG_API_VALIDATION == 1)
-#define ES_VTIMER_INITIALIZER()                                                 \
-    {NULL, NULL, 0, NULL, NULL, 0}
-#else
-#define ES_VTIMER_INITIALIZER()                                                 \
-    {NULL, NULL, 0, NULL, NULL}
-#endif
+#define N_TIME_TO_TICK_MS(time_ms)                                              \
+    ((time_ms) * CONFIG_SYSTIMER_EVENT_FREQ / 1000ul)
 
 /*------------------------------------------------------  C++ extern begin  --*/
 #ifdef __cplusplus
@@ -63,35 +56,35 @@ extern "C" {
 
 /*============================================================  DATA TYPES  ==*/
 
-/**@brief       Virtual Timer callback function type
- */
-typedef void (* esVTimerFn)(void *);
-
 /**@brief       Virtual Timer structure
  */
-struct esVTimer {
-    struct esVTimer *   next;                                                   /**< @brief Next timer in linked list.                      */
-    struct esVTimer *   prev;                                                   /**< @brief Previous timer in linked list.                  */
-    esSysTimerTick      rtick;                                                  /**< @brief Relative number of ticks.                       */
-    esVTimerFn          fn;                                                     /**< @brief Timer callback function.                        */
-    void *              arg;                                                    /**< @brief Argument for timer callback function.           */
-#if (CONFIG_API_VALIDATION == 1)
-    esAtomic            signature;                                              /**< @brief Timer structure signature.                      */
+struct ntimer
+{
+    struct ndlist               list;               /**<@brief Linked list    */
+    ncore_timer_tick            rtick;              /**<@brief Relative ticks */
+    void                     (* fn)(void *);        /**<@brief Callback       */
+    void *                      arg;                /**<@brief Argument       */
+#if (CONFIG_DEBUG_API == 1)
+    ncpu_reg                    signature;          /**<@brief Debug signature*/
 #endif
 };
 
 /**@brief       Virtual Timer structure type
  */
-typedef struct esVTimer esVTimer;
+typedef struct ntimer ntimer;
 
 /*======================================================  GLOBAL VARIABLES  ==*/
 /*===================================================  FUNCTION PROTOTYPES  ==*/
 
-void esModuleVTimerInit(
-    void);
 
-void esVTimerInit(
-    struct esVTimer *   vTimer);
+void nmodule_timer_init(void);
+
+
+
+void ntimer_init(
+    struct ntimer *             timer);
+
+
 
 /**@brief       Start a timer
  * @param       vTimer
@@ -104,11 +97,13 @@ void esVTimerInit(
  *              Argument for callback function
  * @iclass
  */
-void esVTimerStartI(
-    struct esVTimer *   vTimer,
-    esSysTimerTick      tick,
-    esVTimerFn          fn,
-    void *              arg);
+void ntimer_start_i(
+    struct ntimer *             timer,
+    ncore_timer_tick            tick,
+    void                     (* fn)(void *),
+    void *                      arg);
+
+
 
 /**@brief       Start a timer
  * @param       vTimer
@@ -121,27 +116,33 @@ void esVTimerStartI(
  *              Argument for callback function
  * @api
  */
-void esVTimerStart(
-    struct esVTimer *   vTimer,
-    esSysTimerTick      tick,
-    esVTimerFn          fn,
-    void *              arg);
+void ntimer_start(
+    struct ntimer *             timer,
+    ncore_timer_tick            tick,
+    void                     (* fn)(void *),
+    void *                      arg);
+
+
 
 /**@brief       Terminate a timer
  * @param       vTimer
  *              Pointer to timer structure
  * @iclass
  */
-void esVTimerCancelI(
-    struct esVTimer *   vTimer);
+void ntimer_cancel_i(
+    struct ntimer *             timer);
+
+
 
 /**@brief       Terminate a timer
  * @param       vTimer
  *              Pointer to timer structure
  * @api
  */
-void esVTimerCancel(
-    struct esVTimer *   vTimer);
+void ntimer_cancel(
+    struct ntimer *             timer);
+
+
 
 /**@brief       Is a timer still running?
  * @param       vTimer
@@ -149,13 +150,15 @@ void esVTimerCancel(
  * @return      Timer state
  *  @retval     TRUE - the timer is still running
  *  @retval     FALSE - timer has finished running
- * @iclasss
+ * @iclass
  */
-bool esVTimerIsRunningI(
-    const struct esVTimer * vTimer);
+bool ntimer_is_running_i(
+    const struct ntimer *       timer);
 
-esSysTimerTick esVTimerGetRemaining(
-    const struct esVTimer * vTimer);
+
+
+ncore_timer_tick ntimer_remaining(
+    const struct ntimer *       timer);
 
 /*--------------------------------------------------------  C++ extern end  --*/
 #ifdef __cplusplus
@@ -164,6 +167,6 @@ esSysTimerTick esVTimerGetRemaining(
 
 /*================================*//** @cond *//*==  CONFIGURATION ERRORS  ==*/
 /** @endcond *//** @} *//** @} *//*********************************************
- * END of vtimer.h
+ * END of ntimer.h
  ******************************************************************************/
-#endif /* ES_VTIMER_H_ */
+#endif /* NTIMER_H */

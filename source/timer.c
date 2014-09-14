@@ -28,21 +28,17 @@
 
 #include <stddef.h>
 
-#include "plat/critical.h"
-#include "vtimer/vtimer.h"
+#include "plat/sys_lock.h"
+#include "timer/ntimer.h"
 
 /*=========================================================  LOCAL MACRO's  ==*/
 
-#define VTIMER_SIGNATURE                  ((esAtomic)0xdeedbeefu)
+#define TIMER_SIGNATURE                     ((ncpu_reg)0xdeedbeefu)
+
+#define NODE_TO_TIMER(node)                                                     \
+    CONTAINER_OF(node, struct ntimer, list)
 
 /*======================================================  LOCAL DATA TYPES  ==*/
-
-struct VTimerBase {
-    struct esVTimer *   next;
-    struct esVTimer *   prev;
-    esSysTimerTick          tick;
-};
-
 /*=============================================  LOCAL FUNCTION PROTOTYPES  ==*/
 
 /**@brief       Evaluate all running timers
@@ -50,43 +46,36 @@ struct VTimerBase {
  *              routine.
  * @iclass
  */
-static void VTimerEvaluateI(
-    void);
+static void timer_evaluate_i(void);
 
 /*=======================================================  LOCAL VARIABLES  ==*/
 
-static const ES_MODULE_INFO_CREATE("VTimer", "Virtual Timer", "Nenad Radulovic");
+static const NMODULE_INFO_CREATE("Timer", "Nenad Radulovic");
 
-static struct VTimerBase GlobalVTimerSentinel = {
-    (struct esVTimer *)&GlobalVTimerSentinel,
-    (struct esVTimer *)&GlobalVTimerSentinel,
-    (esSysTimerTick)(-1)
-};
+static struct ntimer g_timer_sentinel;
 
 /*======================================================  GLOBAL VARIABLES  ==*/
 /*============================================  LOCAL FUNCTION DEFINITIONS  ==*/
 
-static void VTimerEvaluateI(
-    void) {
+static void timer_evaluate_i(void)
+{
+    if (!ndlist_is_empty(&g_timer_sentinel.list)) {
+        struct ntimer * current;
 
-    if ((struct esVTimer *)&GlobalVTimerSentinel != GlobalVTimerSentinel.next) {
-        struct esVTimer * current;
-
-        current = GlobalVTimerSentinel.next;
-        ES_REQUIRE(ES_API_USAGE, VTIMER_SIGNATURE == current->signature);
+        current = NODE_TO_TIMER(ndlist_next(&g_timer_sentinel.list));
+        NREQUIRE(NAPI_USAGE, TIMER_SIGNATURE == current->signature);
         --current->rtick;
 
-        while (0U == current->rtick) {
-            struct esVTimer * tmp;
+        while (current->rtick == 0u) {
+            struct ntimer * tmp;
 
-            ES_REQUIRE(ES_API_USAGE, VTIMER_SIGNATURE == current->signature);
-            current->prev->next = current->next;
-            current->next->prev = current->prev;
-            current->next       = current;
-            ES_OBLIGATION(current->signature = ~VTIMER_SIGNATURE);
-            tmp = current;
-            current = GlobalVTimerSentinel.next;
-            (* tmp->fn)(tmp->arg);
+            NREQUIRE(NAPI_USAGE, TIMER_SIGNATURE == current->signature);
+            ndlist_remove(&current->list);
+            ndlist_init(&current->list);
+            NOBLIGATION(current->signature = ~TIMER_SIGNATURE);
+            tmp     = current;
+            current = NODE_TO_TIMER(ndlist_next(&g_timer_sentinel.list));
+            tmp->fn(tmp->arg);
         }
     }
 }
@@ -94,110 +83,113 @@ static void VTimerEvaluateI(
 /*===================================  GLOBAL PRIVATE FUNCTION DEFINITIONS  ==*/
 /*====================================  GLOBAL PUBLIC FUNCTION DEFINITIONS  ==*/
 
-void esModuleVTimerInit(
-    void) {
 
-    ES_SYSTIMER_INIT(ES_SYSTIMER_ONE_TICK);
-    ES_SYSTIMER_ENABLE();
-    ES_SYSTIMER_ISR_ENABLE();
-    ES_SYSTIMER_SET_HANDLER(VTimerEvaluateI, 0);
+void nmodule_timer_init(void)
+{
+    ndlist_init(&g_timer_sentinel.list);
+    g_timer_sentinel.rtick = NCORE_TIMER_MAX;
+    ncore_timer_init(NCORE_TIMER_ONE_TICK);
+    ncore_timer_enable();
+    ncore_timer_isr_enable();
+    ntimer_set_handler(timer_evaluate_i, 0);
 }
 
-void esVTimerInit(
-    struct esVTimer *   vTimer) {
+void ntimer_init(
+    struct ntimer *             timer)
+{
+    NREQUIRE(NAPI_POINTER, timer != NULL);
+    NREQUIRE(NAPI_OBJECT,  timer->signature != TIMER_SIGNATURE);
 
-    ES_REQUIRE(ES_API_POINTER, vTimer != NULL);
-    ES_REQUIRE(ES_API_OBJECT,  vTimer->signature != VTIMER_SIGNATURE);
-
-    vTimer->next = vTimer;
+    ndlist_init(&timer->list);
 }
 
-void esVTimerCancel(
-    struct esVTimer *   vTimer) {
 
-    esLockCtx           lockCtx;
 
-    ES_CRITICAL_LOCK_ENTER(&lockCtx);
-    esVTimerCancelI(
-        vTimer);
-    ES_CRITICAL_LOCK_EXIT(lockCtx);
-}
+void ntimer_cancel_i(
+    struct ntimer *             timer)
+{
+    NREQUIRE(NAPI_POINTER, timer != NULL);
 
-void esVTimerCancelI(
-    struct esVTimer *   vTimer) {
+    if (!ndlist_is_empty(&timer->list)) {
+        NREQUIRE(NAPI_OBJECT,  timer->signature == TIMER_SIGNATURE);
 
-    ES_REQUIRE(ES_API_POINTER, vTimer != NULL);
-
-    if (vTimer->next != vTimer) {
-        ES_REQUIRE(ES_API_OBJECT,  vTimer->signature == VTIMER_SIGNATURE);
-
-        if ((struct esVTimer *)&GlobalVTimerSentinel != vTimer->next) {
-            vTimer->next->rtick += vTimer->rtick;
+        if (&g_timer_sentinel != NODE_TO_TIMER(ndlist_next(&timer->list))) {
+            NODE_TO_TIMER(ndlist_next(&timer->list))->rtick += timer->rtick;
         }
-        vTimer->prev->next = vTimer->next;
-        vTimer->next->prev = vTimer->prev;
-        vTimer->next = vTimer;
+        ndlist_remove(&timer->list);
+        ndlist_init(&timer->list);
     }
-    ES_OBLIGATION(vTimer->signature = ~VTIMER_SIGNATURE);
+    NOBLIGATION(timer->signature = ~TIMER_SIGNATURE);
 }
 
-void esVTimerStart(
-    struct esVTimer *   vTimer,
-    esSysTimerTick      tick,
-    esVTimerFn          fn,
-    void *              arg) {
 
-    esLockCtx           lockCtx;
 
-    ES_CRITICAL_LOCK_ENTER(&lockCtx);
-    esVTimerStartI(
-        vTimer,
-        tick,
-        fn,
-        arg);
-    ES_CRITICAL_LOCK_EXIT(lockCtx);
+void ntimer_cancel(
+    struct ntimer *             timer)
+{
+    nsys_lock                   sys_lock;
+
+    nsys_lock_enter(&sys_lock);
+    ntimer_cancel_i(timer);
+    nsys_lock_exit(&sys_lock);
 }
 
-void esVTimerStartI(
-    struct esVTimer *   vTimer,
-    esSysTimerTick      tick,
-    esVTimerFn          fn,
-    void *              arg) {
 
-    struct esVTimer *   current;
 
-    ES_REQUIRE(ES_API_POINTER, vTimer != NULL);
-    ES_REQUIRE(ES_API_USAGE,   vTimer->signature != VTIMER_SIGNATURE);
-    ES_REQUIRE(ES_API_RANGE,   tick > 1u);
-    ES_REQUIRE(ES_API_POINTER, fn != NULL);
+void ntimer_start_i(
+    struct ntimer *             timer,
+    ncore_timer_tick            tick,
+    void                     (* fn)(void *),
+    void *                      arg)
+{
+    struct ntimer *             current;
 
-    vTimer->fn  = fn;
-    vTimer->arg = arg;
-    current = GlobalVTimerSentinel.next;
+    NREQUIRE(NAPI_POINTER, timer != NULL);
+    NREQUIRE(NAPI_USAGE,   timer->signature != TIMER_SIGNATURE);
+    NREQUIRE(NAPI_RANGE,   tick > 1u);
+    NREQUIRE(NAPI_POINTER, fn != NULL);
+
+    timer->fn  = fn;
+    timer->arg = arg;
+    current    = NODE_TO_TIMER(ndlist_next(&g_timer_sentinel.list));
 
     while (current->rtick < tick) {
         tick   -= current->rtick;
-        current = current->next;
+        current = NODE_TO_TIMER(ndlist_next(&current->list));
     }
-    vTimer->next = current;
-    vTimer->prev = current->prev;
-    vTimer->prev->next = vTimer;
-    vTimer->next->prev = vTimer;
-    vTimer->rtick = tick;
+    ndlist_add_before(&current->list, &timer->list);
+    timer->rtick = tick;
 
-    if ((struct esVTimer *)&GlobalVTimerSentinel != current) {
+    if (&g_timer_sentinel != current) {
         current->rtick -= tick;
     }
-    ES_OBLIGATION(vTimer->signature = VTIMER_SIGNATURE);
+    NOBLIGATION(timer->signature = TIMER_SIGNATURE);
 }
 
-bool esVTimerIsRunningI(
-    const struct esVTimer * vTimer) {
 
-    ES_REQUIRE(ES_API_POINTER, vTimer != NULL);
 
-    if (vTimer->next != vTimer) {
-        ES_REQUIRE(ES_API_USAGE, vTimer->signature == VTIMER_SIGNATURE);
+void ntimer_start(
+    struct ntimer *             timer,
+    ncore_timer_tick            tick,
+    void                     (* fn)(void *),
+    void *                      arg)
+{
+    nsys_lock                   sys_lock;
+
+    nsys_lock_enter(&sys_lock);
+    ntimer_start_i(timer, tick, fn, arg);
+    nsys_lock_exit(&sys_lock);
+}
+
+
+
+bool ntimer_is_running_i(
+    const struct ntimer *       timer) {
+
+    NREQUIRE(NAPI_POINTER, timer != NULL);
+
+    if (!ndlist_is_empty(&timer->list)) {
+        NREQUIRE(NAPI_USAGE, timer->signature == TIMER_SIGNATURE);
 
         return (true);
     } else {
@@ -206,28 +198,30 @@ bool esVTimerIsRunningI(
     }
 }
 
-esSysTimerTick esVTimerGetRemaining(
-    const struct esVTimer * vTimer) {
-    esLockCtx           lockCtx;
-    esSysTimerTick      remaining;
 
-    ES_CRITICAL_LOCK_ENTER(&lockCtx);
+
+ncore_timer_tick ntimer_remaining(
+    const struct ntimer *       timer)
+{
+    nsys_lock                   sys_lock;
+    ncore_timer_tick            remaining;
+
     remaining = 0u;
+    nsys_lock_enter(&sys_lock);
 
-    if (esVTimerIsRunningI(vTimer) == true) {
+    if (ntimer_is_running_i(timer)) {
 
         do {
-            remaining += vTimer->rtick;
-            vTimer     = vTimer->prev;
-        } while (vTimer != (struct esVTimer *)&GlobalVTimerSentinel);
+            remaining += timer->rtick;
+            timer      = NODE_TO_TIMER(ndlist_prev(&timer->list));
+        } while (timer != &g_timer_sentinel);
     }
-    ES_CRITICAL_LOCK_EXIT(lockCtx);
+    nsys_lock_exit(&sys_lock);
 
     return (remaining);
 }
 
-
 /*================================*//** @cond *//*==  CONFIGURATION ERRORS  ==*/
 /** @endcond *//** @} *//******************************************************
- * END of vtmr.c
+ * END of timer.c
  ******************************************************************************/
