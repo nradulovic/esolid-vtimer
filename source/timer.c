@@ -28,8 +28,9 @@
 
 #include <stddef.h>
 
-#include "plat/sys_lock.h"
-#include "timer/ntimer.h"
+#include "port/sys_lock.h"
+#include "shared/component.h"
+#include "vtimer/vtimer.h"
 
 /*=========================================================  LOCAL MACRO's  ==*/
 
@@ -40,46 +41,14 @@
 
 /*======================================================  LOCAL DATA TYPES  ==*/
 /*=============================================  LOCAL FUNCTION PROTOTYPES  ==*/
-
-/**@brief       Evaluate all running timers
- * @details     This function must be called from a system timer interrupt
- *              routine.
- * @iclass
- */
-static void timer_evaluate_i(void);
-
 /*=======================================================  LOCAL VARIABLES  ==*/
 
-static const NMODULE_INFO_CREATE("Timer", "Nenad Radulovic");
+static const NCOMPONENT_DEFINE("Virtual timer", "Nenad Radulovic");
 
 static struct ntimer g_timer_sentinel;
 
 /*======================================================  GLOBAL VARIABLES  ==*/
 /*============================================  LOCAL FUNCTION DEFINITIONS  ==*/
-
-static void timer_evaluate_i(void)
-{
-    if (!ndlist_is_empty(&g_timer_sentinel.list)) {
-        struct ntimer * current;
-
-        current = NODE_TO_TIMER(ndlist_next(&g_timer_sentinel.list));
-        NREQUIRE(NAPI_USAGE, TIMER_SIGNATURE == current->signature);
-        --current->rtick;
-
-        while (current->rtick == 0u) {
-            struct ntimer * tmp;
-
-            NREQUIRE(NAPI_USAGE, TIMER_SIGNATURE == current->signature);
-            ndlist_remove(&current->list);
-            ndlist_init(&current->list);
-            NOBLIGATION(current->signature = ~TIMER_SIGNATURE);
-            tmp     = current;
-            current = NODE_TO_TIMER(ndlist_next(&g_timer_sentinel.list));
-            tmp->fn(tmp->arg);
-        }
-    }
-}
-
 /*===================================  GLOBAL PRIVATE FUNCTION DEFINITIONS  ==*/
 /*====================================  GLOBAL PUBLIC FUNCTION DEFINITIONS  ==*/
 
@@ -88,11 +57,12 @@ void nmodule_timer_init(void)
 {
     ndlist_init(&g_timer_sentinel.list);
     g_timer_sentinel.rtick = NCORE_TIMER_MAX;
-    ncore_timer_init(NCORE_TIMER_ONE_TICK);
-    ncore_timer_enable();
-    ncore_timer_isr_enable();
-    ntimer_set_handler(timer_evaluate_i, 0);
+    nsystimer_init(NCORE_TIMER_ONE_TICK);
+    nsystimer_enable();
+    nsystimer_isr_enable();
 }
+
+
 
 void ntimer_init(
     struct ntimer *             timer)
@@ -138,7 +108,7 @@ void ntimer_cancel(
 
 void ntimer_start_i(
     struct ntimer *             timer,
-    ncore_timer_tick            tick,
+	nsystimer_tick              tick,
     void                     (* fn)(void *),
     void *                      arg)
 {
@@ -170,7 +140,7 @@ void ntimer_start_i(
 
 void ntimer_start(
     struct ntimer *             timer,
-    ncore_timer_tick            tick,
+	nsystimer_tick              tick,
     void                     (* fn)(void *),
     void *                      arg)
 {
@@ -200,11 +170,11 @@ bool ntimer_is_running_i(
 
 
 
-ncore_timer_tick ntimer_remaining(
+nsystimer_tick ntimer_remaining(
     const struct ntimer *       timer)
 {
     nsys_lock                   sys_lock;
-    ncore_timer_tick            remaining;
+    nsystimer_tick              remaining;
 
     remaining = 0u;
     nsys_lock_enter(&sys_lock);
@@ -219,6 +189,31 @@ ncore_timer_tick ntimer_remaining(
     nsys_lock_exit(&sys_lock);
 
     return (remaining);
+}
+
+
+
+void nsystimer_isr(void)
+{
+    if (!ndlist_is_empty(&g_timer_sentinel.list)) {
+        struct ntimer * current;
+
+        current = NODE_TO_TIMER(ndlist_next(&g_timer_sentinel.list));
+        NREQUIRE(NAPI_USAGE, TIMER_SIGNATURE == current->signature);
+        --current->rtick;
+
+        while (current->rtick == 0u) {
+            struct ntimer * tmp;
+
+            NREQUIRE(NAPI_USAGE, TIMER_SIGNATURE == current->signature);
+            ndlist_remove(&current->list);
+            ndlist_init(&current->list);
+            NOBLIGATION(current->signature = ~TIMER_SIGNATURE);
+            tmp     = current;
+            current = NODE_TO_TIMER(ndlist_next(&g_timer_sentinel.list));
+            tmp->fn(tmp->arg);
+        }
+    }
 }
 
 /*================================*//** @cond *//*==  CONFIGURATION ERRORS  ==*/

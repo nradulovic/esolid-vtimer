@@ -37,10 +37,10 @@
 
 #include <stdbool.h>
 
-#include "plat/compiler.h"
-#include "arch/ncore.h"
-#include "base/ndebug.h"
-#include "base/nlist.h"
+#include "port/compiler.h"
+#include "port/systimer.h"
+#include "shared/debug.h"
+#include "lib/list.h"
 
 /*===============================================================  MACRO's  ==*/
 
@@ -61,11 +61,11 @@ extern "C" {
 struct ntimer
 {
     struct ndlist               list;               /**<@brief Linked list    */
-    ncore_timer_tick            rtick;              /**<@brief Relative ticks */
+    nsystimer_tick              rtick;              /**<@brief Relative ticks */
     void                     (* fn)(void *);        /**<@brief Callback       */
     void *                      arg;                /**<@brief Argument       */
-#if (CONFIG_DEBUG_API == 1)
-    ncpu_reg                    signature;          /**<@brief Debug signature*/
+#if (CONFIG_API_VALIDATION == 1)
+    ndebug_magic                signature;          /**<@brief Debug signature*/
 #endif
 };
 
@@ -99,7 +99,7 @@ void ntimer_init(
  */
 void ntimer_start_i(
     struct ntimer *             timer,
-    ncore_timer_tick            tick,
+	nsystimer_tick              tick,
     void                     (* fn)(void *),
     void *                      arg);
 
@@ -118,7 +118,7 @@ void ntimer_start_i(
  */
 void ntimer_start(
     struct ntimer *             timer,
-    ncore_timer_tick            tick,
+	nsystimer_tick              tick,
     void                     (* fn)(void *),
     void *                      arg);
 
@@ -157,7 +157,7 @@ bool ntimer_is_running_i(
 
 
 
-ncore_timer_tick ntimer_remaining(
+nsystimer_tick ntimer_remaining(
     const struct ntimer *       timer);
 
 /*--------------------------------------------------------  C++ extern end  --*/
