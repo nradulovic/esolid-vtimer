@@ -34,7 +34,7 @@
 
 /*=========================================================  LOCAL MACRO's  ==*/
 
-#define TIMER_SIGNATURE                     ((ncpu_reg)0xdeedbeefu)
+#define TIMER_SIGNATURE                     ((ndebug_magic)0xdeedbeefu)
 
 #define NODE_TO_TIMER(node)                                                     \
     CONTAINER_OF(node, struct ntimer, list)
@@ -45,18 +45,55 @@
 
 static const NCOMPONENT_DEFINE("Virtual timer", "Nenad Radulovic");
 
-static struct ntimer g_timer_sentinel;
+static struct ntimer g_timer_sentinel =
+{
+		NDLIST_INIT(&g_timer_sentinel.list),
+		NCORE_TIMER_MAX,
+		0,
+		NULL,
+		NULL,
+#if (CONFIG_API_VALIDATION == 1)
+		TIMER_SIGNATURE
+#endif
+};
 
 /*======================================================  GLOBAL VARIABLES  ==*/
 /*============================================  LOCAL FUNCTION DEFINITIONS  ==*/
+
+
+static void insert_timer(
+	struct ntimer * 			timer)
+{
+	struct ntimer *             current;
+
+	current = NODE_TO_TIMER(ndlist_next(&g_timer_sentinel.list));
+
+	while (current->rtick < timer->rtick) {
+		timer->rtick -= current->rtick;
+		current       = NODE_TO_TIMER(ndlist_next(&current->list));
+	}
+	ndlist_add_before(&current->list, &timer->list);
+
+	if (&g_timer_sentinel != current) {
+		current->rtick -= timer->rtick;
+	}
+}
+
+
+
+static void remove_timer(
+	struct ntimer * 			timer)
+{
+	ndlist_remove(&timer->list);
+	ndlist_init(&timer->list);
+}
+
 /*===================================  GLOBAL PRIVATE FUNCTION DEFINITIONS  ==*/
 /*====================================  GLOBAL PUBLIC FUNCTION DEFINITIONS  ==*/
 
 
 void nmodule_timer_init(void)
 {
-    ndlist_init(&g_timer_sentinel.list);
-    g_timer_sentinel.rtick = NCORE_TIMER_MAX;
     nsystimer_init(NCORE_TIMER_ONE_TICK);
     nsystimer_enable();
     nsystimer_isr_enable();
@@ -86,8 +123,7 @@ void ntimer_cancel_i(
         if (&g_timer_sentinel != NODE_TO_TIMER(ndlist_next(&timer->list))) {
             NODE_TO_TIMER(ndlist_next(&timer->list))->rtick += timer->rtick;
         }
-        ndlist_remove(&timer->list);
-        ndlist_init(&timer->list);
+        remove_timer(timer);
     }
     NOBLIGATION(timer->signature = ~TIMER_SIGNATURE);
 }
@@ -110,29 +146,24 @@ void ntimer_start_i(
     struct ntimer *             timer,
 	nsystimer_tick              tick,
     void                     (* fn)(void *),
-    void *                      arg)
+    void *                      arg,
+	uint8_t						flags)
 {
-    struct ntimer *             current;
-
     NREQUIRE(NAPI_POINTER, timer != NULL);
     NREQUIRE(NAPI_USAGE,   timer->signature != TIMER_SIGNATURE);
     NREQUIRE(NAPI_RANGE,   tick > 1u);
     NREQUIRE(NAPI_POINTER, fn != NULL);
 
-    timer->fn  = fn;
-    timer->arg = arg;
-    current    = NODE_TO_TIMER(ndlist_next(&g_timer_sentinel.list));
-
-    while (current->rtick < tick) {
-        tick   -= current->rtick;
-        current = NODE_TO_TIMER(ndlist_next(&current->list));
-    }
-    ndlist_add_before(&current->list, &timer->list);
+    timer->fn    = fn;
+    timer->arg   = arg;
     timer->rtick = tick;
 
-    if (&g_timer_sentinel != current) {
-        current->rtick -= tick;
+    if (flags & NTIMER_ATTR_REPEAT) {
+    	timer->itick = tick;
+    } else {
+    	timer->itick = 0u;
     }
+    insert_timer(timer);
     NOBLIGATION(timer->signature = TIMER_SIGNATURE);
 }
 
@@ -142,12 +173,13 @@ void ntimer_start(
     struct ntimer *             timer,
 	nsystimer_tick              tick,
     void                     (* fn)(void *),
-    void *                      arg)
+    void *                      arg,
+	uint8_t						flags)
 {
     nsys_lock                   sys_lock;
 
     nsys_lock_enter(&sys_lock);
-    ntimer_start_i(timer, tick, fn, arg);
+    ntimer_start_i(timer, tick, fn, arg, flags);
     nsys_lock_exit(&sys_lock);
 }
 
@@ -196,19 +228,24 @@ nsystimer_tick ntimer_remaining(
 void nsystimer_isr(void)
 {
     if (!ndlist_is_empty(&g_timer_sentinel.list)) {
-        struct ntimer * current;
+        struct ntimer * 		current;
 
         current = NODE_TO_TIMER(ndlist_next(&g_timer_sentinel.list));
         NREQUIRE(NAPI_USAGE, TIMER_SIGNATURE == current->signature);
         --current->rtick;
 
         while (current->rtick == 0u) {
-            struct ntimer * tmp;
+            struct ntimer * 	tmp;
 
             NREQUIRE(NAPI_USAGE, TIMER_SIGNATURE == current->signature);
-            ndlist_remove(&current->list);
-            ndlist_init(&current->list);
+            remove_timer(current);
             NOBLIGATION(current->signature = ~TIMER_SIGNATURE);
+
+            if (current->itick != 0u) {
+            	current->rtick = current->itick;
+            	insert_timer(current);
+            	NOBLIGATION(current->signature = TIMER_SIGNATURE);
+            }
             tmp     = current;
             current = NODE_TO_TIMER(ndlist_next(&g_timer_sentinel.list));
             tmp->fn(tmp->arg);

@@ -49,6 +49,9 @@
 #define N_TIME_TO_TICK_MS(time_ms)                                              \
     ((time_ms) * CONFIG_SYSTIMER_EVENT_FREQ / 1000ul)
 
+#define NTIMER_ATTR_ONE_SHOT				(0x1u << 0)
+#define NTIMER_ATTR_REPEAT					(0x1u << 1)
+
 /*------------------------------------------------------  C++ extern begin  --*/
 #ifdef __cplusplus
 extern "C" {
@@ -62,6 +65,7 @@ struct ntimer
 {
     struct ndlist               list;               /**<@brief Linked list    */
     nsystimer_tick              rtick;              /**<@brief Relative ticks */
+    nsystimer_tick              itick;              /**<@brief Initial ticks  */
     void                     (* fn)(void *);        /**<@brief Callback       */
     void *                      arg;                /**<@brief Argument       */
 #if (CONFIG_API_VALIDATION == 1)
@@ -101,7 +105,8 @@ void ntimer_start_i(
     struct ntimer *             timer,
 	nsystimer_tick              tick,
     void                     (* fn)(void *),
-    void *                      arg);
+    void *                      arg,
+	uint8_t						flags);
 
 
 
@@ -120,7 +125,8 @@ void ntimer_start(
     struct ntimer *             timer,
 	nsystimer_tick              tick,
     void                     (* fn)(void *),
-    void *                      arg);
+    void *                      arg,
+	uint8_t						flags);
 
 
 
