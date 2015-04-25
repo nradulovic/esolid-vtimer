@@ -97,10 +97,10 @@ static void VTimerEvaluateI(
 void esModuleVTimerInit(
     void) {
 
+    ES_SYSTIMER_SET_HANDLER(VTimerEvaluateI);
     ES_SYSTIMER_INIT(ES_SYSTIMER_ONE_TICK);
     ES_SYSTIMER_ENABLE();
     ES_SYSTIMER_ISR_ENABLE();
-    ES_SYSTIMER_SET_HANDLER(VTimerEvaluateI, 0);
 }
 
 void esVTimerInit(
